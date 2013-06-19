@@ -19,7 +19,7 @@ if len(sys.argv) != 6:
     print "\t[pixel] approximate image width (PIXELS)"
     sys.exit()
 
-print "Reading " + sys.argv[0] + "...",
+print "Reading " + sys.argv[1] + "...",
 sys.stdout.flush()
 DATA = np.genfromtxt(sys.argv[1])
 
