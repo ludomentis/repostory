@@ -10,13 +10,15 @@ from lxml import etree
 from scipy.interpolate import Rbf
 from upoints import utils
 
-if len(sys.argv) != 6:
+if len(sys.argv) != 7:
     print "Invalid arguments number! Usage:"
-    print sys.argv[0]+" [filename] [width] [height] [pixel]"
+    print sys.argv[0]+" [filename] [width] [height] [pixel] [ratio] [pal_exp]"
     print "\t[filename]\t\tname of datafile"
     print "\t[width]\t\twidth of single square of aggregation (meters)"
     print "\t[height]\t\theight of single square of aggregation (meters)"
-    print "\t[pixel] approximate image width (PIXELS)"
+    print "\t[pixel] approximate image width (px)"
+    print "\t[ratio] ratio of uncovered point for interpolation ([0:1])"
+    print "\t[pal_exp] exponent for the palette ([0:1])"
     sys.exit()
 
 print "Reading " + sys.argv[1] + "...",
@@ -31,6 +33,7 @@ SS_W = float(sys.argv[2]) # single square width (west-east)
 SS_H = float(sys.argv[3]) # single square height (north-south)
 HSIZE = float(sys.argv[4])
 TRANS_THRESH = float(sys.argv[5])
+PAL_EXP = float(sys.argv[6])
 
 #fraction on coordinates used for aggregation
 #i.e. aggregates amongst 1/FRAC_LAT degrees of latitude
@@ -150,8 +153,8 @@ def qcol((val, mini, maxi), (val_a, mini_a, maxi_a)):
         rho = 0.
     elif rho > 1.:
         rho = 1.
-    red = int(255*math.pow(rho*2, .4)) if rho < .5 else 255
-    green = int(255-255*math.pow((rho-.5)*2, .4)) if rho > .5 else 255
+    red = int(255*math.pow(rho*2, PAL_EXP)) if rho < .5 else 255
+    green = int(255-255*math.pow((rho-.5)*2, PAL_EXP)) if rho > .5 else 255
     blue = 0
     alpha = int(255*(val_a-mini_a)/(maxi_a-mini_a))
     return (red, green, blue, alpha)
