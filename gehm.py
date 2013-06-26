@@ -1,24 +1,26 @@
-"""Heatmap generatro for Google Earth"""
+"""Heatmap generator for Google Earth"""
 import numpy as np
 import math
 import sys
 import Image
 import random
+import string
 
 from pykml.factory import KML_ElementMaker as KML
 from lxml import etree
 from scipy.interpolate import Rbf
 from upoints import utils
 
-if len(sys.argv) != 7:
+if len(sys.argv) != 8:
     print "Invalid arguments number! Usage:"
-    print sys.argv[0]+" [filename] [width] [height] [pixel] [ratio] [pal_exp]"
+    print sys.argv[0]+" [filename] [width] [height] [px] [ratio] [p_e] [a_e]"
     print "\t[filename]\t\tname of datafile"
     print "\t[width]\t\twidth of single square of aggregation (meters)"
     print "\t[height]\t\theight of single square of aggregation (meters)"
-    print "\t[pixel] approximate image width (px)"
-    print "\t[ratio] ratio of uncovered point for interpolation ([0:1])"
-    print "\t[pal_exp] exponent for the palette ([0:1])"
+    print "\t[px] approximate image width (px)"
+    print "\t[ratio] ratio of uncovered point for interpolation [0:1]"
+    print "\t[p_e] exponent for the palette [0:1]"
+    print "\t[a_e] exponent for the alpa [0:1]"
     sys.exit()
 
 print "Reading " + sys.argv[1] + "...",
@@ -34,7 +36,7 @@ SS_H = float(sys.argv[3]) # single square height (north-south)
 HSIZE = float(sys.argv[4])
 TRANS_THRESH = float(sys.argv[5])
 PAL_EXP = float(sys.argv[6])
-
+ALP_EXP = float(sys.argv[7])
 #fraction on coordinates used for aggregation
 #i.e. aggregates amongst 1/FRAC_LAT degrees of latitude
 FRAC_LAT = 1./math.degrees(SS_H/RADIUS)
@@ -79,10 +81,10 @@ LATMAX = max([x[0] for x in MMAPP.keys()])
 LONMIN = min([x[1] for x in MMAPP.keys()])
 LONMAX = max([x[1] for x in MMAPP.keys()])
 print "Area"
-print "    lat min: " + str(LATMIN)
-print "    lat max: " + str(LATMAX)
-print "    lon min: " + str(LONMIN)
-print "    lon max: " + str(LONMAX)
+print "    lat min: " + str(LATMIN/FRAC_LAT)
+print "    lat max: " + str(LATMAX/FRAC_LAT)
+print "    lon min: " + str(LONMIN/FRAC_LON)
+print "    lon max: " + str(LONMAX/FRAC_LON)
 
 #depending on the input approx size and on the real
 #size of the aggregation grid, calulate the size
@@ -93,6 +95,7 @@ SQUARES = (LATMAX - LATMIN + 1)*(LONMAX-LONMIN + 1)
 HSIZE = DOTSIZE*(LONMAX - LONMIN + 1)
 VSIZE = DOTSIZE*(LATMAX - LATMIN + 1)
 
+print "Dotsize ", DOTSIZE
 # setup scattered data value
 X = [(a[1]-LONMIN + .5)*DOTSIZE for a in MMAPP.keys()]
 Y = [(a[0]-LATMIN + .5)*DOTSIZE for a in MMAPP.keys()]
@@ -143,12 +146,14 @@ print " done!"
 #image creation
 BGR = Image.new("RGBA", (int(HSIZE), int(VSIZE)), (255, 255, 255, 0))
 PIXELS = BGR.load()
+CODE_NAME = str.replace("HM_" + "_".join(sys.argv[1:]),".",",")
 print "Image initialized!"
 
 #color-opacity function
 def qcol((val, mini, maxi), (val_a, mini_a, maxi_a)):
     """function for rgba calculation"""
     rho = (val - mini)/(maxi-mini)
+    rho_a = (val_a-mini_a)/(maxi_a-mini_a)
     if rho < 0.:
         rho = 0.
     elif rho > 1.:
@@ -156,7 +161,11 @@ def qcol((val, mini, maxi), (val_a, mini_a, maxi_a)):
     red = int(255*math.pow(rho*2, PAL_EXP)) if rho < .5 else 255
     green = int(255-255*math.pow((rho-.5)*2, PAL_EXP)) if rho > .5 else 255
     blue = 0
-    alpha = int(255*(val_a-mini_a)/(maxi_a-mini_a))
+    if rho_a < 0.:
+        rho_a = 0.
+    elif rho_a > 1.:
+        rho_a = 1.
+    alpha = int(255*math.pow(rho_a,ALP_EXP))
     return (red, green, blue, alpha)
 
 #image writing
@@ -167,7 +176,7 @@ for i in range(BGR.size[0]):    # for every pixel:
         RBF_v = RBF(i, BGR.size[1]-j-1)
         alpha_v = RBF_A(i, BGR.size[1]-j-1)
         PIXELS[i, j] = qcol((RBF_v, MI_V, MA_V), (alpha_v, MI_C, MA_C))
-BGR.save("bgr.png")
+BGR.save(CODE_NAME + ".png")
 print "Image saved!"
 
 #kml creation
@@ -175,7 +184,7 @@ MYKML = KML.kml()
 DOC = KML.Document()
 MYGO = KML.GroundOverlay(
   KML.color('ffffffff'),
-  KML.Icon(KML.href("bgr.png")),
+  KML.Icon(KML.href(CODE_NAME + ".png")),
   KML.LatLonBox(
     KML.north(str(LATMAX/FRAC_LAT)),
     KML.south(str(LATMIN/FRAC_LAT)),
@@ -188,5 +197,5 @@ DOC.append(MYGO)
 MYKML.append(DOC)
 
 #kml writing
-OUTFILE = file('test.kml', 'w')
+OUTFILE = file(CODE_NAME + ".kml", 'w')
 OUTFILE.write(etree.tostring(MYKML, pretty_print=True))
