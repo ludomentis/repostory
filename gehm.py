@@ -5,18 +5,20 @@ import sys
 import Image
 import random
 import string
+import ImageDraw
+import ImageFont
 
 from pykml.factory import KML_ElementMaker as KML
 from lxml import etree
 from scipy.interpolate import Rbf
 from upoints import utils
 
-if len(sys.argv) != 8:
+
+if len(sys.argv) != 7:
     print "Invalid arguments number! Usage:"
-    print sys.argv[0]+" [filename] [width] [height] [px] [ratio] [p_e] [a_e]"
+    print sys.argv[0]+" [filename] [width] [px] [ratio] [p_e] [a_e]"
     print "\t[filename]\t\tname of datafile"
-    print "\t[width]\t\twidth of single square of aggregation (meters)"
-    print "\t[height]\t\theight of single square of aggregation (meters)"
+    print "\t[side]\t\tside of single square of aggregation (meters)"
     print "\t[px] approximate image width (px)"
     print "\t[ratio] ratio of uncovered point for interpolation [0:1]"
     print "\t[p_e] exponent for the palette [0:1]"
@@ -31,12 +33,11 @@ print "done! " + str(len(DATA)) + " rows read!"
 
 #caluclating size of aggregation in terms of lat and lon
 RADIUS = 1000*utils.calc_radius(float(DATA[0][0])) #earth radius in meters
-SS_W = float(sys.argv[2]) # single square width (west-east)
-SS_H = float(sys.argv[3]) # single square height (north-south)
-HSIZE = float(sys.argv[4])
-TRANS_THRESH = float(sys.argv[5])
-PAL_EXP = float(sys.argv[6])
-ALP_EXP = float(sys.argv[7])
+SS_W = SS_H = float(sys.argv[2]) # single square width (west-east)
+HSIZE = float(sys.argv[3])
+TRANS_THRESH = float(sys.argv[4])
+PAL_EXP = float(sys.argv[5])
+ALP_EXP = float(sys.argv[6])
 #fraction on coordinates used for aggregation
 #i.e. aggregates amongst 1/FRAC_LAT degrees of latitude
 FRAC_LAT = 1./math.degrees(SS_H/RADIUS)
@@ -158,8 +159,9 @@ def qcol((val, mini, maxi), (val_a, mini_a, maxi_a)):
         rho = 0.
     elif rho > 1.:
         rho = 1.
-    red = int(255*math.pow(rho*2, PAL_EXP)) if rho < .5 else 255
-    green = int(255-255*math.pow((rho-.5)*2, PAL_EXP)) if rho > .5 else 255
+    rho = math.pow(rho, PAL_EXP)
+    red = int(255*rho*2.) if rho < .5 else 255
+    green = int(255-255*(rho-.5)*2.) if rho > .5 else 255
     blue = 0
     if rho_a < 0.:
         rho_a = 0.
@@ -179,6 +181,30 @@ for i in range(BGR.size[0]):    # for every pixel:
 BGR.save(CODE_NAME + ".png")
 print "Image saved!"
 
+
+LEGEND_SIZE = (200,400)
+
+LEGEND = Image.new("RGBA", LEGEND_SIZE, (255, 255, 255, 0))
+PIXELS = LEGEND.load()
+LEGEND_NAME = str.replace("legend_" + "_".join(sys.argv[1:]),".",",")
+
+for i in range(LEGEND.size[1]):    # for every pixel:
+    VAL = MI_V + i*(MA_V - MI_V)/LEGEND.size[1]
+    COL = qcol((VAL, MI_V, MA_V), (MA_C, MI_C, MA_C))
+    for j in range(LEGEND.size[0]):
+        if j == 0 or i == 0 or i == LEGEND.size[1]-1 or j >= int(LEGEND.size[0]/4) -1 or i % int(LEGEND.size[1]/5) ==0:
+            PIXELS[j, i] = (0,0,0,100)
+        else:
+            PIXELS[j, i] = COL
+DRAW_LAB = ImageDraw.Draw(LEGEND)
+FONT = ImageFont.truetype("ArialBold.ttf", 18)
+for i in range(6):
+    LAB = "%2.1e ug/m^3" % (MI_V+i*(MA_V-MI_V)/5)
+    POS_V = int(i*(LEGEND.size[1]- FONT.getsize("1")[1])/5) 
+    DRAW_LAB.text((int(LEGEND.size[0]/4)+5, POS_V), LAB, font=FONT, fill='rgb(255, 255, 255)')
+
+LEGEND.save(LEGEND_NAME + ".png")
+
 #kml creation
 MYKML = KML.kml()
 DOC = KML.Document()
@@ -193,9 +219,22 @@ MYGO = KML.GroundOverlay(
     KML.rotation('0')
   )
 )
+
+MYSO = KML.ScreenOverlay(
+  KML.name('Legend'),
+  KML.Icon(KML.href(LEGEND_NAME + ".png")),
+    KML.overlayXY(x=".01",y=".99",xunits="fraction",yunits="fraction",),
+    KML.screenXY(x=".01",y=".99",xunits="fraction",yunits="fraction",),
+    KML.rotationXY(x="0.5",y="0.5",xunits="fraction",yunits="fraction",),
+    KML.size(x="0",y="0",xunits="pixels",yunits="pixels",)
+)
+DOC.append(MYSO)
 DOC.append(MYGO)
 MYKML.append(DOC)
 
 #kml writing
 OUTFILE = file(CODE_NAME + ".kml", 'w')
 OUTFILE.write(etree.tostring(MYKML, pretty_print=True))
+
+
+print "\nTHE END (?)"
